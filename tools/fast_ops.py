@@ -1,5 +1,5 @@
 import igraph as ig
-from . import utils
+from .utils import get_igraph
 
 def fast_betweenness(G, weight=None, kind = 'edge', norm=True, cutoff=None):
     """
@@ -22,9 +22,9 @@ def fast_betweenness(G, weight=None, kind = 'edge', norm=True, cutoff=None):
     dict
     """
     if weight != None:
-        Gig = utils.get_igraph(G, edge_weights = weight)
+        Gig = get_igraph(G, edge_weights = weight)
     else:
-        Gig = utils.get_igraph(G)
+        Gig = get_igraph(G)
     norm_val = len(G.nodes)*(len(G.nodes)-1)
     if kind=='edge':
         bet = Gig.edge_betweenness(weights=weight, cutoff=cutoff)
@@ -63,9 +63,9 @@ def fast_closeness(G, kind = 'edge', weight=None, norm=True):
     dict
     """
     if weight != None:
-        Gig = utils.get_igraph(G, edge_weights = weight)
+        Gig = get_igraph(G, edge_weights = weight)
     else:
-        Gig = utils.get_igraph(G)
+        Gig = get_igraph(G)
     
     clo = Gig.closeness(weights=weight)
     if kind == 'node':
