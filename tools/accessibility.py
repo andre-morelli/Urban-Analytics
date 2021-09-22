@@ -1,6 +1,9 @@
 import random
 import numpy as np
 from .utils import get_igraph, get_full_igraph
+import osmnx as ox
+import networkx as nx
+import geopandas as gpd
 
 import math
 
@@ -210,6 +213,7 @@ def calc_tract_accessibility(tracts, pois, G, weight='length',
                 n+=k
     else:
         distances = Gig.shortest_paths_dijkstra(source=ig_nodes, target=nig_targets, weights=weight)
+        n=0
         for tract in loop:
             total_acc=0
             for ds in distances[n:n+k]:
