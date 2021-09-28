@@ -4,10 +4,9 @@ from .utils import get_igraph, get_full_igraph
 import osmnx as ox
 import networkx as nx
 import geopandas as gpd
-
 import math
+from tqdm.notebook import tqdm
 
-#all array types
 def acc_comulative(d, t=500):
     """
     Calculate cumulative accessibility for array of observations.
@@ -150,6 +149,7 @@ def calc_tract_accessibility(tracts, pois, G, weight='length',
     -------
     Dictionary in the form {tract index: average accessibility score}
     """
+    assert 0<k and type(k)==int, '"k" must be a positive integer'
     # get places on the gdf
     X = np.array([n.coords[0][0] for n in pois['geometry']])
     Y = np.array([n.coords[0][1] for n in pois['geometry']])
@@ -222,3 +222,150 @@ def calc_tract_accessibility(tracts, pois, G, weight='length',
             acc.append(total_acc/k)
             n+=k
     return {i:a for i,a in zip(tracts.index,acc)}
+
+
+def _get_edges(e_seqs,Gig):
+    r = []
+    s = []
+    for seq in e_seqs:
+        if len(seq)<1:
+            r.append([])
+            s.append(0)
+        else:
+            r.append(Gig.es[seq]['orig_name'])
+            s.append(sum(Gig.es[seq]['length']))
+    return r,s
+
+def _update_edges(G,e_seq,attr='load',weights=None):
+    if weights is None: 
+        weights=[1]*len(e_seq)
+    
+    for seq,weight in zip(e_seq,weights):
+        for e in seq:
+            try:
+                G.edges[e][attr]+=weight
+            except:
+                for e_ in G.edges:
+                    G.edges[e_][attr]=0
+                G.edges[e][attr]+=weight
+    return G
+
+
+def calc_accessibility_load(tracts, pois, G, weight='length',
+                            func=acc_cumulative_gaussian, k=5,
+                            random_seed=None,func_kws={},
+                            pois_weight_column=None,
+                            tracts_weight_column=None,
+                            track_progress=False,norm=False):
+    """
+    Calculate accessibility load using accessibility function.
+    Accessibility Load is a centrality measure indicating how important
+    an edge is to maintain the current level of accessibility on a network.
+    
+    Parameters
+    ----------
+    tracts : GeoDataframe
+        Area GeoDataFrame containing census tract information
+    pois : GeoDataFrame
+        Point GeoDataFrame containing points of interest
+    G : NetworkX graph structure
+        Network Graph.
+    weight : string
+        Graph´s weight attribute for shortest paths (such as length or travel time)
+    func : function
+        Access score function to use. Options are: acc_cumulative, 
+        acc_soft_threshold, and acc_cumulative_gaussian
+    func_kws : dictionary
+        arguments for the access score function
+    k : int
+        number of sampled points per tract
+    pois_weight_column : string
+        Column in the pois GeoDataFrame with location weights.
+    tracts_weight_column : string
+        Column in the tracts GeoDataFrame with area weights (such as population).
+    random_seed : int
+        random seed.
+    track_progress : boolean
+        if True show progression bar **only available for running in jupyter-notebook**
+    Returns
+    -------
+    NetworkX Graph structure
+    """
+    
+    attr='load'
+    assert 0<k and type(k)==int, '"k" must be a positive integer'
+    
+    G = G.copy()
+    for e in G.edges:
+        G.edges[e]['orig_name'] = e
+    Gig = get_full_igraph(G)
+    
+    if pois_weight_column is None:
+        pois_weight_column = 'temp'
+        pois = pois.copy()
+        pois[pois_weight_column] = 1
+    if tracts_weight_column is None:
+        tratcs_weight_column = 'temp'
+        tracts = tracts.copy()
+        tracts[tracts_weight_column] = 1
+    
+    node_dict_r = {}
+    for node in Gig.vs:
+        node_dict_r[node.index] = int(node['osmid'])
+    node_dict = {}
+    for node in Gig.vs:
+        node_dict[int(node['osmid'])] = node.index
+    
+    for e_ in G.edges:
+        G.edges[e_][attr]=0
+    
+    # get places on the gdf
+    X = np.array([n.coords[0][0] for n in pois['geometry']])
+    Y = np.array([n.coords[0][1] for n in pois['geometry']])
+    #set places to nodes
+    nodes = ox.get_nearest_nodes(G,X,Y, method='balltree')
+    attrs = {}.fromkeys(G.nodes,0)
+    for node, val in zip(nodes,pois[pois_weight_column]):
+        attrs[node] += val
+    nx.set_node_attributes(G,attrs,pois_weight_column)    
+    # get igraph object for fast computations
+    Gig = get_full_igraph(G)
+    
+    #get nodes to target (for faster shortest paths)
+    n_targets = [n for n in G.nodes if G.nodes[n][pois_weight_column]>0]
+    nig_targets = [node_dict[n] for n in n_targets]
+    vals = [G.nodes[n][pois_weight_column] for n in n_targets]
+    loop = tracts.iterrows()
+    
+    X,Y = [],[]
+    pops = []
+    for tract in tracts.iterrows():
+        tract = tract[1]
+        poly = tract['geometry']
+        # get k points within the polygon
+        X_,Y_ = random_points_in_polygon(k,poly,seed=random_seed)
+        #match points to graph
+        X+=X_
+        Y+=Y_
+        pops += [tract[tracts_weight_column]/k]*k
+    pops = np.array(pops)
+    tot = np.nansum(pops)
+    X = np.array(X)
+    Y = np.array(Y)
+    trackt_ns = ox.get_nearest_nodes(G,X,Y,method='balltree')
+    ig_nodes = [node_dict[n] for n in trackt_ns]
+    #use tqdm if track_progress
+    loop = (tqdm(zip(ig_nodes,pops),total=len(ig_nodes))
+            if track_progress 
+            else zip(ig_nodes,pops))
+        
+    for source,pop in loop:
+        if pop != pop or pop==0:
+            continue
+        e_seq = Gig.get_shortest_paths(source,weights=weight,output='epath')
+        e_seq,ts = _get_edges(e_seq,Gig)
+        w = func(np.array(ts),**func_kws) * np.array([d for n,d in G.nodes(data=pois_weight_column)]) * pop
+        if norm:
+            w = w/tot
+        G = _update_edges(G,e_seq,weights=w,attr='load')
+    return G
