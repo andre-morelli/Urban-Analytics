@@ -355,7 +355,7 @@ def calc_accessibility_load(tracts, pois, G, weight='length',
     trackt_ns = ox.get_nearest_nodes(G,X,Y,method='balltree')
     ig_nodes = [node_dict[n] for n in trackt_ns]
     #use tqdm if track_progress
-    loop = (tqdm(zip(ig_nodes,pops),total=len(ig_nodes))
+    loop = (tqdm(zip(ig_nodes,pops),total=len(ig_nodes),leave=False)
             if track_progress 
             else zip(ig_nodes,pops))
         
