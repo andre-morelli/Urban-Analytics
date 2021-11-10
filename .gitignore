@@ -113,6 +113,6 @@ dmypy.json
 # Pyre type checker
 .pyre/
 *.json
-*.gpkg
 *.gpkg-shm
 *.gpkg-wal
+sample_edges.gpkg

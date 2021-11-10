@@ -48,6 +48,47 @@ def get_orientation_entropy(G, weight=None, n=36):
     probs = counts/counts.sum()
     return (-np.log(probs)*probs).sum()
     
+    
+def get_float_entropy(data, weight=None, n=36, vmin=None, vmax=None):
+    """
+    Calculate entropy for a given dataset.
+    
+    Parameters
+    ----------
+    data : unidimensinal array-like or None
+        data to calculate entropy on.
+    weight: unidimensinal array-like (only ints)
+        Values to weight data. Must have same size as data or None. If None, each edge has same weight.
+    n: int 
+        Number of bins. Divides data into equal sized bins
+    vmin: float
+        lower cap of bins
+    vmax: float
+        upper cap of bins
+    Returns
+    -------
+    float
+    """
+    assert vmin==vmax==None or vmin<vmax, "vmin must be smaller than vmax"
+    assert type(n)==int and n>=2, "number of bins must be an integer bigger than 1"
+    assert weight == None or len(weigth)==len(data), "if weights != None, length of weights must be the same as data"
+    if vmin==None:
+        vmin = min(data)
+    if vmax==None:
+        vmax=max(data)
+    if weight != None:
+        # weight bearings by NUMERIC attribute
+        d = []
+        for value,w in zip(data,weight):
+            d+=[value] * int(w)
+        data = np.array(d)
+    
+    counts, _ = np.histogram(data,range=(vmin,vmax), bins=n)
+    
+    probs = counts/counts.sum()
+    probs = np.array([k for k in probs if k>0]) #ignore probability zero (if p==0, p*log(p)->0)
+    return (-np.log(probs)*probs).sum()
+    
 def gini(x, w=None):
     """
     Calculate gini coefficient for a given array.
