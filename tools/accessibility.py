@@ -72,7 +72,7 @@ def acc_cumulative_gaussian(d, t=500, v=129_842):
     
     return (d<=t)*1 + np.exp(-(d-t)**2/v)*(d>t)
 
-def random_points_in_polygon(n_pts, polygon,seed=None):
+def random_points_in_polygon(polygon,n_pts,seed=None):
     """
     Gets random points within a shapely polygon
     
@@ -111,7 +111,7 @@ def random_points_in_polygon(n_pts, polygon,seed=None):
         if len(X)<n_pts:
             continue
         break
-    return X,Y
+    return np.array(X),np.array(Y)
 
 def calc_tract_accessibility(tracts, pois, G, weight='length',
                              func=acc_cumulative_gaussian,k=5, 
