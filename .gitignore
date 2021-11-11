@@ -116,3 +116,4 @@ dmypy.json
 *.gpkg-shm
 *.gpkg-wal
 sample_edges.gpkg
+test_data/CTB_OD/CTB_Network.graph
