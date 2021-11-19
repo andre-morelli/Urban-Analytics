@@ -2,9 +2,10 @@ from .curve_funcs import *
 from .accessibility import *
 from .utils import *
 
+import warnings
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import differential_evolution
+from scipy.optimize import differential_evolution, curve_fit
 from scipy.signal import savgol_filter
 import scipy.stats as sts
 from math import ceil
@@ -14,17 +15,29 @@ def moving_average(a, n=3) :
     ret[n:] = ret[n:] - ret[:-n]
     return np.argmax(ret[n - 1:])
 
+def norm_func(x,func,func_kws={}):
+    x_ = norm_x(x)
+    y = func(x_,**func_kws)
+    return x, y
+def norm_x(x,p=85):
+    factor = np.percentile(x,p)/100
+    return x/factor,factor
+
 def fit_impedance(d, func,bounds,target_func=None,crop_outliers=True,
-                          outlier_threshold=3,p0=None,show=True,
-                          plot_result=True,get_stats=True,plot_kws={},
-                          plot_data = True,pop_size=256,smooth=False,
-                          bins=None,bin_size=5,fill_low=False):
-    
+                  outlier_threshold=3,p0=None,show=True,
+                  plot_result=True,get_stats=True,plot_kws={},
+                  plot_data = True,pop_size=256,smooth=False,
+                  bins=None,bin_size=5,fill_low=False,normx=True):
     assert {((plot_result and target_func!=None) or (not plot_result)), 
            'Please provide a target function if plot_result=True'}
     assert {((get_stats and target_func!=None) or (not get_stats)), 
            'Please provide a target function if get_stats=True'}
     d = np.array(d)
+    if normx:
+        d0 = d.copy()
+        d,factor = norm_x(d)
+    else:
+        factor=1
     if crop_outliers:
         p75 = np.percentile(d,75)
         p25 = np.percentile(d,25)
@@ -41,21 +54,29 @@ def fit_impedance(d, func,bounds,target_func=None,crop_outliers=True,
     mid = (b[1]-b[0])/2
     b = b-mid
     if fill_low:
-        max_position = moving_average(v)
-        v[:max_position] = max(v)
-    
-    poly = differential_evolution(func, bounds=bounds,args=(b,v),
-                                 popsize=pop_size)
+        max_position = moving_average(v,n=3)
+        v[:max_position+1] = max(v)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        poly = differential_evolution(func, bounds=bounds,args=(b,v),
+                                     popsize=pop_size)
     poly,lsq = poly['x'],poly['fun']
     poly = list(poly)
     if plot_result:
         a = np.linspace(0,max(b),num=1000)
         y = target_func(a,*poly)
-        plt.plot(a,y,**plot_kws)
+        plt.plot(a*factor,y,**plot_kws)
         if plot_data:
-            plt.bar(b,v,width=mid*1.8,alpha=.3,color='orangered')
+            plt.bar(b*factor,v,width=mid*factor*1.8,alpha=.3,color='orangered')
         if show:
             plt.show()
+    if normx:
+        a = np.linspace(0,max(b),num=1000)
+        y = target_func(a,*poly)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            poly,_ = curve_fit(target_func,a*factor,y)
+        poly = list(poly)
     #goodness of fit
     if get_stats:
         y = target_func(b,*poly)
@@ -139,4 +160,4 @@ def get_cost_counts(dmat,tripmat):
     for i in range(dmat.shape[0]):
         for j in range(dmat.shape[1]):
             dists = dists + [dmat[i][j]]*int(tripmat[i][j])
-    return [n for n in dists if n!=np.inf]
+    return [n for n in dists if n!=np.inf and n==n]
