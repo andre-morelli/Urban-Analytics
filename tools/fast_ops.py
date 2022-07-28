@@ -1,6 +1,6 @@
 import igraph as ig
 from .utils import get_igraph
-
+#mudancinha
 def fast_betweenness(G, weight=None, kind = 'edge', norm=True, cutoff=None):
     """
     Gets betweenness centrality. For relativelly large graphs, this func is 
