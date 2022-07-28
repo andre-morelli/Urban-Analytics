@@ -54,7 +54,7 @@ def fit_impedance_cdf(d, func,crop_outliers=True,
         a = np.linspace(0,max(x),5000)
         b = func(a,*poly)
         if 'label' in plot_kws:
-            plot_kws['label'] += f' mse:{msq:.03f}'
+            plot_kws['label'] += f'  mse: {msq:.03f}'
         plt.plot(a*factor,b,**plot_kws)
     if normx:
         a = np.linspace(0,max(x),num=5000)
@@ -89,7 +89,7 @@ def get_best_fit_cdf(d, crop_outliers=True,
         func_params[name] = {pname:pval for pname,pval in zip(ps,poly)}
         func_params[name]['mse'] = s
     if plot_result:
-        plt.legend(frameon=True,framealpha=1,fontsize=14)
+        plt.legend()
         plt.ylim(0,1.1)
         plt.xlim(0)
         if show:
