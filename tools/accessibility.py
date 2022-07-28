@@ -119,7 +119,7 @@ def calc_accessibility(zones, G, opportunities_column=None,
                         weight='length', func=acc_cumulative_gaussian,
                         func_kws={},k=5, random_seed=None, 
                         array_cap=1_000, round_trip = False,
-                        competition = True,population_column=None,
+                        competition = False,population_column=None,
                         competition_kws=None,competition_graph=None,
                         node_subset=None):
     """
@@ -176,7 +176,7 @@ def calc_accessibility(zones, G, opportunities_column=None,
     
     Returns
     -------
-    Dictionary in the form {zone index: average accessibility score}
+    Dictionary {zone index: average accessibility score}
     """
     if node_subset is None:
         node_subset=G.nodes
@@ -265,6 +265,57 @@ def calc_accessibility(zones, G, opportunities_column=None,
             vals = [v/pacc for v,pacc in zip(vals,pop_acc)]
         else:
             pop_acc=[1]*len(nig_targets)
+    else:
+        if competition:
+            #do calculation recursevely
+            opp_acc = calc_zone_accessibility(zones, competition_graph, opportunities_column=population_column,
+                                              weight=weight, func=func,
+                                              func_kws=competition_kws,k=k, random_seed=random_seed, 
+                                              array_cap=array_cap, round_trip = round_trip,
+                                              competition = False)
+            for key,val in opp_acc.items():
+                if val<1: opp_acc[key]=1
+        else:
+            opp_acc = {zid:1 for zid in zones.index}
+    if opportunities_column is not None:
+        vals = []
+        nig_targets = []
+        #avoid duplicates
+        for n,(op,acc) in enumerate(zip(zones[opportunities_column],opp_acc.values())):
+            nns = list(set(ig_nodes[n*k:(n+1)*k]))
+            nns = [nn for nn in nns if nn not in nig_targets]
+            if len(nns)==0:
+                nns = list(set(ig_nodes[n*k:(n+1)*k]))
+                for nn in nns:
+                    i=np.where(np.array(nig_targets)==nn)[0][0]
+                    vals[i]+=op/k
+            else:
+                nig_targets+=nns
+                vals+=[op/len(nns)/acc]*len(nns)
+    #initiate total accessibility as zero 
+    #calc distances to nodes
+    acc=[]
+    loop = [l[1] for l in zones.iterrows()]
+    sects = [ig_nodes[x:x+array_cap*k] for x in range(0,int((len(ig_nodes)//(array_cap*k)+1)*(array_cap*k))+1,array_cap*k)]
+    loops = [loop[x:x+array_cap] for x in range(0,int((len(loop)//(array_cap)+1)*array_cap)+1,array_cap)]
+    for section,l in zip(sects,loops):
+        if round_trip:
+            distances = np.array(Gig.shortest_paths_dijkstra(source=section, target=nig_targets, 
+                                                             weights=weight,mode='in'))
+            distances = distances + np.array(Gig.shortest_paths_dijkstra(source=section, target=nig_targets, 
+                                                                         weights=weight,mode='out'))
+            #distance will be an average of the two
+            distances = distances/2
+        else:
+            distances = Gig.shortest_paths_dijkstra(source=section, target=nig_targets, weights=weight,mode='out')
+        for n,zone in enumerate(l):
+            total_acc=0
+            for ds in distances[n*k:n*k+k]:
+                new = np.array(vals)*func(np.array(ds), **func_kws)
+                total_acc += np.nansum(new)
+            acc.append(total_acc/k)
+    
+    return {i:a for i,a in zip(zones.index,acc)}
     
 def plot_element_hists(hists, elements, label='',plt_kws={'bins':20}):
     h=[]
@@ -379,12 +430,14 @@ def betweenness_accessibility(zones, G, weight='length',func=acc_cumulative_gaus
                               opportunities_column=None, node_subset=None,pois=None,
                               pois_weight_column=None, population_column=None,
                               track_progress=False, norm=False, write_name='load',
-                              competition=True, competition_kws=None,
+                              competition=False, competition_kws=None,
                               competition_graph=None):
     """
-    Calculate accessibility load using accessibility function.
-    Accessibility Load is a centrality measure indicating how important
+    Calculate Betweenness Accessibility through a distance decay function.
+    Betweenness Accessibility is a centrality measure indicating how important
     an edge is to maintain the current level of accessibility on a network.
+    Betweenness accessibility was first proposed by Sarlas et al. (2020)
+    https://doi.org/10.1016/j.jtrangeo.2020.102680
     
     Parameters
     ----------
@@ -445,7 +498,6 @@ def betweenness_accessibility(zones, G, weight='length',func=acc_cumulative_gaus
     attr='load'
     assert 0<k and type(k)==int, '"k" must be a positive integer'
     
-    G = G.copy()
     for e in G.edges:
         G.edges[e]['orig_name'] = e
     Gig = get_full_igraph(G)
